@@ -63,9 +63,9 @@ class OzonClient {
   /**
    * Visit homepage to refresh cookies (needed for antibot bypass)
    */
-  async visitHomepage() {
+  async visitHomepage(force = false) {
     const now = Date.now();
-    if (now - this.lastHomepageVisit < this.homepageVisitInterval && this.lastHomepageVisit > 0) {
+    if (!force && now - this.lastHomepageVisit < this.homepageVisitInterval && this.lastHomepageVisit > 0) {
       return; // Skip if visited recently
     }
 
@@ -76,10 +76,15 @@ class OzonClient {
       timeout: 90000
     });
 
-    await this.page.waitForTimeout(5000);
+    // Wait longer and simulate human behavior
+    await this.page.waitForTimeout(8000);
+    await this.simulateHumanBehavior();
+    await this.page.waitForTimeout(3000);
+
     this.lastHomepageVisit = now;
 
-    console.log('[Ozon Client] Homepage visited, cookies refreshed');
+    const title = await this.page.title();
+    console.log(`[Ozon Client] Homepage visited (title: ${title}), cookies refreshed`);
   }
 
   /**
@@ -167,22 +172,34 @@ class OzonClient {
       url += `&page=${page}`;
     }
 
+    // First visit homepage to establish session
+    await this.visitHomepage();
+
+    console.log(`[Ozon Client] Navigating to search: ${url}`);
+
     await this.page.goto(url, {
       waitUntil: 'domcontentloaded',
       timeout: 90000
     });
 
-    await this.page.waitForTimeout(10000);
+    await this.page.waitForTimeout(12000);
+    await this.simulateHumanBehavior();
+    await this.page.waitForTimeout(3000);
 
     // Check for captcha
     if (await this.hasCaptcha()) {
-      console.log('[Ozon Client] Captcha detected, trying to bypass...');
-      await this.visitHomepage();
+      console.log('[Ozon Client] Captcha detected, trying to bypass with fresh session...');
+      // Force new homepage visit
+      this.lastHomepageVisit = 0;
+      await this.visitHomepage(true);
+      await this.page.waitForTimeout(5000);
       await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
-      await this.page.waitForTimeout(10000);
+      await this.page.waitForTimeout(15000);
+      await this.simulateHumanBehavior();
     }
 
-    await this.simulateHumanBehavior();
+    const pageTitle = await this.page.title();
+    console.log(`[Ozon Client] Search page title: ${pageTitle}`);
 
     // Extract products from page
     const products = await this.page.evaluate((maxResults) => {

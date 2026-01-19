@@ -94,7 +94,7 @@ class OzonClient {
       limit = 20
     } = options;
 
-    console.log(`[Ozon Client] Searching: ${query}`);
+    console.log(`[Ozon Client] Searching: ${query}, limit: ${limit}`);
 
     // Build search URL
     let url = `https://www.ozon.ru/search/?text=${encodeURIComponent(query)}&from_global=true`;
@@ -123,13 +123,30 @@ class OzonClient {
     }
 
     try {
-      const { page, title } = await this.loadPage(url, 15000);
+      const { page, title } = await this.loadPage(url, 10000);
 
       // Check for captcha/block
       if (title.includes('Antibot') || title.includes('ограничен')) {
         console.log('[Ozon Client] Page blocked, returning empty results');
         await this.close();
         return [];
+      }
+
+      // Scroll to load more products if needed
+      if (limit > 20) {
+        console.log('[Ozon Client] Scrolling to load more products...');
+        const scrollIterations = Math.min(Math.ceil(limit / 20), 5); // Max 5 scrolls
+
+        for (let i = 0; i < scrollIterations; i++) {
+          await page.evaluate(() => {
+            window.scrollTo(0, document.body.scrollHeight);
+          });
+          await page.waitForTimeout(2000);
+        }
+
+        // Scroll back to top
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.waitForTimeout(1000);
       }
 
       // Extract products
@@ -145,49 +162,89 @@ class OzonClient {
 
           try {
             const href = link.getAttribute('href');
-            if (!href) continue;
+            if (!href || !href.includes('/product/')) continue;
 
-            // Extract product ID
+            // Extract product ID from URL
             const idMatch = href.match(/-(\d+)(?:\?|\/|$)/);
             const id = idMatch ? idMatch[1] : null;
             if (!id || seen.has(id)) continue;
             seen.add(id);
 
-            // Get parent container
-            const container = link.closest('[data-index]') ||
-                             link.closest('[class*="tile"]') ||
-                             link.parentElement?.parentElement?.parentElement;
+            // Build full URL
+            const fullUrl = href.startsWith('http')
+              ? href.split('?')[0]
+              : `https://www.ozon.ru${href.split('?')[0]}`;
+
+            // Get parent container - try multiple strategies
+            let container = link.closest('[data-index]');
+            if (!container) container = link.closest('[class*="tile"]');
+            if (!container) container = link.closest('[class*="product"]');
+            if (!container) {
+              // Walk up to find a reasonable container
+              let el = link.parentElement;
+              for (let i = 0; i < 5 && el; i++) {
+                if (el.innerText && el.innerText.includes('₽')) {
+                  container = el;
+                  break;
+                }
+                el = el.parentElement;
+              }
+            }
 
             if (!container) continue;
 
             const text = container.innerText || '';
-            const lines = text.split('\n').filter(l => l.trim());
+            const lines = text.split('\n').map(l => l.trim()).filter(l => l);
 
-            // Find price
+            // Find price - REQUIRED
             let price = null;
+            let priceText = '';
             for (const line of lines) {
               if (line.includes('₽')) {
-                const match = line.match(/(\d[\d\s]*)/);
+                priceText = line;
+                // Extract first number sequence before ₽
+                const match = line.match(/(\d[\d\s]*)₽/);
                 if (match) {
                   price = parseInt(match[1].replace(/\s/g, ''));
-                  break;
+                  if (price > 0 && price < 100000000) break;
                 }
               }
             }
 
-            // Find name (longer line without price symbols)
+            // Skip if no price found
+            if (!price) continue;
+
+            // Find old price (crossed out)
+            let oldPrice = null;
+            const oldPriceMatch = text.match(/(\d[\d\s]*)₽.*?(\d[\d\s]*)₽/);
+            if (oldPriceMatch) {
+              const p2 = parseInt(oldPriceMatch[2].replace(/\s/g, ''));
+              if (p2 > price) oldPrice = p2;
+            }
+
+            // Find discount
+            let discount = null;
+            const discountMatch = text.match(/-(\d+)%/);
+            if (discountMatch) {
+              discount = parseInt(discountMatch[1]);
+            }
+
+            // Find name - look for product description
             let name = '';
             for (const line of lines) {
-              const trimmed = line.trim();
-              if (trimmed &&
-                  !trimmed.includes('₽') &&
-                  !trimmed.match(/^-?\d+%?$/) &&
-                  trimmed.length > 15 &&
-                  trimmed.length < 300) {
-                name = trimmed;
-                break;
-              }
+              // Skip price lines, discount lines, short lines
+              if (line.includes('₽')) continue;
+              if (line.match(/^-?\d+%$/)) continue;
+              if (line.match(/^\d+\s*(отзыв|товар|шт)/i)) continue;
+              if (line.match(/^(доставка|завтра|послезавтра)/i)) continue;
+              if (line.match(/^(в корзину|купить|баллов)/i)) continue;
+              if (line.length < 10 || line.length > 300) continue;
+
+              name = line;
+              break;
             }
+
+            if (!name) name = `Товар ${id}`;
 
             // Get image
             const img = container.querySelector('img');
@@ -195,19 +252,28 @@ class OzonClient {
 
             // Get rating
             let rating = null;
-            const ratingMatch = text.match(/(\d[,\.]\d)\s*[★⭐•]/);
+            let reviewsCount = null;
+            const ratingMatch = text.match(/(\d[,\.]\d)/);
             if (ratingMatch) {
               rating = parseFloat(ratingMatch[1].replace(',', '.'));
+            }
+            const reviewsMatch = text.match(/(\d+)\s*отзыв/i);
+            if (reviewsMatch) {
+              reviewsCount = parseInt(reviewsMatch[1]);
             }
 
             items.push({
               id,
-              url: `https://www.ozon.ru${href.startsWith('/') ? '' : '/'}${href.split('?')[0]}`,
-              name: name || `Product ${id}`,
+              url: fullUrl,
+              name,
               price,
-              priceFormatted: price ? `${price.toLocaleString('ru-RU')} ₽` : null,
+              priceFormatted: `${price.toLocaleString('ru-RU')} ₽`,
+              oldPrice,
+              oldPriceFormatted: oldPrice ? `${oldPrice.toLocaleString('ru-RU')} ₽` : null,
+              discount,
               image,
-              rating
+              rating,
+              reviewsCount
             });
           } catch (e) {
             // Skip problematic items
@@ -217,7 +283,7 @@ class OzonClient {
         return items;
       }, limit);
 
-      console.log(`[Ozon Client] Found ${products.length} products`);
+      console.log(`[Ozon Client] Found ${products.length} products with prices`);
       await this.close();
       return products;
 

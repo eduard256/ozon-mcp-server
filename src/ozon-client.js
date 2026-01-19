@@ -23,29 +23,23 @@ class OzonClient {
 
     console.log('[Ozon Client] Creating fresh browser instance...');
 
+    // Match Python script exactly
     this.browser = await chromium.launch({
       headless: true,
       args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
         '--disable-blink-features=AutomationControlled',
-        '--disable-dev-shm-usage'
+        '--disable-dev-shm-usage',
+        '--no-sandbox'
       ]
     });
 
     this.context = await this.browser.newContext({
-      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       viewport: { width: 1920, height: 1080 },
-      locale: 'ru-RU',
-      timezoneId: 'Europe/Moscow'
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      locale: 'ru-RU'
     });
 
     this.page = await this.context.newPage();
-
-    // Remove webdriver detection
-    await this.page.addInitScript(() => {
-      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-    });
 
     console.log('[Ozon Client] Browser created');
     return this.page;

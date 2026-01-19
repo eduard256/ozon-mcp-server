@@ -232,19 +232,29 @@ class OzonClient {
             // Find name - look for product description
             let name = '';
             for (const line of lines) {
-              // Skip price lines, discount lines, short lines
+              // Skip price lines, discount lines, badges, short lines
               if (line.includes('₽')) continue;
               if (line.match(/^-?\d+%$/)) continue;
               if (line.match(/^\d+\s*(отзыв|товар|шт)/i)) continue;
               if (line.match(/^(доставка|завтра|послезавтра)/i)) continue;
-              if (line.match(/^(в корзину|купить|баллов)/i)) continue;
-              if (line.length < 10 || line.length > 300) continue;
+              if (line.match(/^(в корзину|купить)/i)) continue;
+              if (line.match(/баллов/i)) continue;
+              if (line.match(/^(распродажа|осталось|цена что надо|express|оригинал)$/i)) continue;
+              if (line.match(/^Apple\s*Оригинал$/i)) continue;
+              if (line.length < 15 || line.length > 300) continue;
+              // Must contain product-like words or brand
+              if (!line.match(/(смартфон|iphone|телефон|apple|samsung|xiaomi|ноутбук|планшет|наушники|часы|гб|gb|тб|tb)/i)) continue;
 
               name = line;
               break;
             }
 
-            if (!name) name = `Товар ${id}`;
+            // If no good name found, try to get from link title or alt
+            if (!name) {
+              const linkTitle = link.getAttribute('title') || '';
+              const imgAlt = container.querySelector('img')?.getAttribute('alt') || '';
+              name = linkTitle || imgAlt || `Товар ${id}`;
+            }
 
             // Get image
             const img = container.querySelector('img');

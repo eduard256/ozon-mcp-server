@@ -450,14 +450,6 @@ class OzonClient {
   }
 
   /**
-   * Set location (simplified - just returns success)
-   */
-  async setLocation(city) {
-    console.log(`[Ozon Client] Set location requested: ${city}`);
-    return { success: true, city, note: 'Location setting not fully implemented' };
-  }
-
-  /**
    * Get filters
    */
   async getFilters(query) {

@@ -89,20 +89,6 @@ const TOOLS = [
     }
   },
   {
-    name: 'ozon_set_location',
-    description: 'Set delivery location city. This affects delivery times and available stock in search results.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        city: {
-          type: 'string',
-          description: 'City name for delivery (e.g., "Москва", "Санкт-Петербург", "Новосибирск")'
-        }
-      },
-      required: ['city']
-    }
-  },
-  {
     name: 'ozon_get_filters',
     description: 'Get available filters and sort options for a search query or category.',
     inputSchema: {
@@ -155,10 +141,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case 'ozon_products_list':
         result = await ozonClient.getProductsList(args.productIds);
-        break;
-
-      case 'ozon_set_location':
-        result = await ozonClient.setLocation(args.city);
         break;
 
       case 'ozon_get_filters':

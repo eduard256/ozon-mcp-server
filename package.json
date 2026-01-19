@@ -1,0 +1,27 @@
+{
+  "name": "ozon-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP Server for Ozon marketplace - search products, get details, prices and delivery info",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/http-server.js",
+    "start:stdio": "node src/index.js",
+    "dev": "node --watch src/http-server.js"
+  },
+  "keywords": [
+    "mcp",
+    "ozon",
+    "marketplace",
+    "api",
+    "ai",
+    "model-context-protocol"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "express": "^4.18.2",
+    "playwright": "^1.40.0"
+  }
+}

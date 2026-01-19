@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  ozon-mcp:
+    build: .
+    container_name: ozon-mcp-server
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+    restart: unless-stopped
+    # For development with local source
+    # volumes:
+    #   - ./src:/app/src

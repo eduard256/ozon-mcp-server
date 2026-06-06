@@ -1,8 +1,12 @@
-# Ozon MCP Server
+<p align="center">
+  <img src="https://raw.githubusercontent.com/eduard256/ozon-mcp-server/assets/img/ozon-mcp-logo.webp" alt="OZON MCP" width="420">
+</p>
 
 <p align="center">
-  <img src="assets/banner.webp" alt="Ozon MCP Server" width="100%">
+  <img src="https://raw.githubusercontent.com/eduard256/ozon-mcp-server/assets/img/ozon-card.webp" alt="Ozon MCP — search, details, reviews" width="100%">
 </p>
+
+# Ozon MCP Server
 
 MCP-сервер для поиска товаров на Ozon (ozon.ru). Даёт ИИ три инструмента: искать товары, читать карточку и читать отзывы.
 

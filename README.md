@@ -1,206 +1,64 @@
+<p align="center">
+  <img src="assets/banner.webp" alt="Ozon MCP Server" width="100%">
+</p>
+
 # Ozon MCP Server
 
-MCP (Model Context Protocol) Server for Ozon marketplace. Allows AI assistants to search products, get detailed information, prices, and delivery info from Ozon.ru.
+MCP-сервер для поиска товаров на Ozon (ozon.ru). Даёт ИИ три инструмента: искать товары, читать карточку и читать отзывы.
 
-## Features
+Публичного API для покупателей у Ozon нет, а сайт закрыт антиботом Variti. Поэтому сервер держит один headless-браузер Chromium, который проходит проверку один раз, а дальше забирает данные JSON-ом из внутреннего `composer-api` прямо со страницы. HTML не парсится — данные приходят структурированными.
 
-- **ozon_search** - Search products with filters (price, sorting, pagination)
-- **ozon_product_details** - Get detailed product info (price, characteristics, images, rating)
-- **ozon_products_list** - Get info for multiple products at once
-- **ozon_set_location** - Set delivery city
-- **ozon_get_filters** - Get available filters for search
-- **ozon_get_categories** - Get product categories list
+## Инструменты
 
-## How it Works
+1. **ozon_search** — поиск товаров. Возвращает название, цену (в рублях, числом), старую цену, скидку, рейтинг, число отзывов, бренд, картинку и чистую ссылку.
+2. **ozon_product_details** — карточка товара по SKU, ссылке или slug. Цена (с картой / без карты / старая), наличие, рейтинг, продавец, фото, характеристики, описание.
+3. **ozon_product_reviews** — отзывы покупателей: текст, оценка, плюсы, минусы, дата.
 
-The server uses Playwright to automate a headless browser and bypass Ozon's antibot protection:
+## Запуск через Docker
 
-1. Maintains a persistent browser session with cookies
-2. Uses "natural navigation" (homepage → target page) to avoid captcha
-3. Extracts data from page DOM and embedded JSON
-4. Simulates human-like behavior (mouse movements, scrolling)
-
-## Installation
-
-### Option 1: Direct (Node.js)
+Образ опубликован в Docker Hub.
 
 ```bash
-# Clone repository
-git clone https://github.com/eduard256/ozon-mcp-server.git
-cd ozon-mcp-server
+docker run -i --rm --init --shm-size=1g eduard256/ozon-mcp-server:latest
+```
 
-# Install dependencies
+Флаги обязательны: `-i` — stdin для stdio, `--init` — корректное завершение Chromium, `--shm-size=1g` — память для браузера.
+
+## Установка в ваш клиент
+
+Инструкция под каждую систему — отдельным файлом:
+
+- [Claude Code](docs/CLAUDECODE-install.md)
+- [Claude Desktop](docs/CLAUDE-install.md)
+- [OpenAI Codex CLI](docs/CODEX-install.md)
+- [Cursor](docs/CURSOR-install.md)
+- [Windsurf](docs/WINDSURF-install.md)
+- [VS Code (Copilot)](docs/VSCODE-install.md)
+- [Cline](docs/CLINE-install.md)
+- [Continue.dev](docs/CONTINUE-install.md)
+- [Zed](docs/ZED-install.md)
+- [JetBrains AI Assistant](docs/JETBRAINS-install.md)
+- [Junie](docs/JUNIE-install.md)
+- [Gemini CLI](docs/GEMINI-install.md)
+
+## Как это работает
+
+- `src/browser.js` — один Chromium. Проходит антибот на главной странице и держит её открытой; все `fetch` идут с неё. При HTTP 403/307 (сессия протухла) или падении браузера перезапускается сам. Через 10 минут простоя браузер закрывается, чтобы освободить память.
+- `src/parse.js` — чистые парсеры JSON из `composer-api` (`widgetStates`). Без сети.
+- `src/ozon.js` — строит пути API, забирает данные, парсит.
+- `src/index.js` — MCP-сервер по stdio. Логи идут только в stderr (stdout занят протоколом JSON-RPC).
+
+**Важно:**
+
+1. Нельзя блокировать загрузку картинок, шрифтов и стилей — антибот грузит свои скрипты через них. Заблокируешь — Ozon вернёт 403.
+2. `fetch` должен идти со страницы на домене ozon.ru, а не с пустой — иначе CORS и 403.
+3. Первый запрос платит за прохождение антибота (~12 секунд). Дальше — 0.3–1 секунда.
+
+## Локальная разработка
+
+```bash
 npm install
-
-# Install Playwright browsers
 npx playwright install chromium
-npx playwright install-deps chromium
-
-# Start server
-npm start
+node src/index.js          # MCP-сервер по stdio
+npm run test:parse         # офлайн-тесты парсеров на samples/
 ```
-
-### Option 2: Docker
-
-```bash
-# Clone and build
-git clone https://github.com/eduard256/ozon-mcp-server.git
-cd ozon-mcp-server
-docker-compose up -d
-```
-
-## Configuration
-
-Environment variables:
-
-- `PORT` - HTTP server port (default: 3001)
-
-## Usage
-
-### HTTP API
-
-The server exposes MCP Streamable HTTP transport at `/mcp` endpoint.
-
-**Base URL:** `http://localhost:3001`
-
-**Endpoints:**
-- `GET /` - Server info and available tools
-- `GET /health` - Health check
-- `POST /mcp` - MCP JSON-RPC endpoint
-- `GET /mcp` - SSE stream (Accept: text/event-stream)
-- `DELETE /mcp` - Terminate session
-
-### Example: Search Products
-
-```bash
-curl -X POST http://localhost:3001/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "tools/call",
-    "params": {
-      "name": "ozon_search",
-      "arguments": {
-        "query": "iPhone 15",
-        "sort": "popular",
-        "limit": 10
-      }
-    }
-  }'
-```
-
-### Example: Get Product Details
-
-```bash
-curl -X POST http://localhost:3001/mcp \
-  -H "Content-Type: application/json" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "tools/call",
-    "params": {
-      "name": "ozon_product_details",
-      "arguments": {
-        "productId": "https://www.ozon.ru/product/smartfon-apple-iphone-15-128gb-1234567890/"
-      }
-    }
-  }'
-```
-
-## Claude Desktop Integration
-
-Add to your Claude Desktop config (`~/.config/claude/claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "ozon": {
-      "url": "http://localhost:3001/mcp"
-    }
-  }
-}
-```
-
-Or for remote server:
-
-```json
-{
-  "mcpServers": {
-    "ozon": {
-      "url": "http://YOUR_SERVER_IP:3001/mcp"
-    }
-  }
-}
-```
-
-## Tools Reference
-
-### ozon_search
-
-Search for products on Ozon.
-
-**Parameters:**
-- `query` (required) - Search text
-- `sort` - Sort order: `popular`, `price`, `price_desc`, `new`, `rating`, `discount`
-- `page` - Page number (default: 1)
-- `priceMin` - Minimum price in rubles
-- `priceMax` - Maximum price in rubles
-- `limit` - Max results (default: 20, max: 50)
-
-**Returns:** Array of products with id, url, name, price, image, rating
-
-### ozon_product_details
-
-Get detailed product information.
-
-**Parameters:**
-- `productId` (required) - Product ID or full URL
-
-**Returns:** Object with title, price, oldPrice, discount, rating, reviewsCount, images, characteristics, description, seller, inStock
-
-### ozon_products_list
-
-Get multiple products at once.
-
-**Parameters:**
-- `productIds` (required) - Array of product IDs or URLs
-
-**Returns:** Array of product details
-
-### ozon_set_location
-
-Set delivery city (affects prices and availability).
-
-**Parameters:**
-- `city` (required) - City name
-
-**Returns:** Success status
-
-### ozon_get_filters
-
-Get available filters for a search.
-
-**Parameters:**
-- `query` (required) - Search query or category URL
-
-**Returns:** Available sort options and filters
-
-### ozon_get_categories
-
-Get list of product categories.
-
-**Parameters:** None
-
-**Returns:** Array of categories with name and url
-
-## Notes
-
-- First request may take longer (browser initialization)
-- Product detail pages require natural navigation to bypass captcha
-- Rate limiting: avoid too many rapid requests
-- Ozon may change their antibot measures, requiring updates
-
-## License
-
-MIT
